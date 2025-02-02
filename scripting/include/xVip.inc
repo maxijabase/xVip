@@ -142,3 +142,11 @@ stock int GetUserIDBySteamID(const char[] steamid)
   }
   return -1;
 }
+
+/**
+ * Checks if a client has VIP status.
+ *
+ * @param client    Client index to check.
+ * @return          True if client is VIP, false otherwise.
+ */
+native bool xVip_IsVip(int client);

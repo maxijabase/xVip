@@ -5,7 +5,7 @@
 #include <multicolors>
 #include <autoexecconfig>
 #include <timeparser>
-#include "include/xVip"
+#include <xVip>
 
 #pragma newdecls required
 
@@ -23,7 +23,7 @@ Database g_DB;
 ConVar g_cvFlags;
 char g_cFlags[20];
 
-bool g_bIsVip[MAXPLAYERS + 1];
+bool g_bIsVip[1024] = { false, ... };
 bool g_Late;
 
 public Plugin myinfo = 
@@ -37,6 +37,9 @@ public Plugin myinfo =
 
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
+  RegPluginLibrary("xVip");
+  CreateNative("xVip_IsVip", Native_IsVip);
+
   g_Late = late;
   return APLRes_Success;
 }
@@ -78,12 +81,8 @@ public void SQL_OnConnection(Database db, const char[] error, any data)
   CreateTables();
 
   if (g_Late) {
-    PrintToChatAll("xVip v%s loaded late.", PLUGIN_VERSION);
-    
-    // Process each player
     for (int i = 1; i <= MaxClients; i++) {
       if (IsValidClient(i)) {
-        PrintToChatAll("Processing %N", i);
         OnClientPostAdminCheck(i);
       }
     }
@@ -179,7 +178,6 @@ public Action CMD_Vip(int client, int args) {
     return Plugin_Handled;
   }
 
-  // if client is 0, it's console, show all vips currently connected in server
   if (client == 0)
   {
     int count;
@@ -706,7 +704,6 @@ public void SetVipFlags(int userid)
     AdminFlag vipFlag;
     FindFlagByChar(g_cFlags[i], vipFlag);
     AddUserFlags(client, vipFlag);
-    PrintToServer("[xVip] %N has been given the %c flag.", client, g_cFlags[i]);
   }
 }
 
@@ -763,4 +760,14 @@ stock void Reply(int userid, const char[] message, any ...) {
       CPrintToChat(client, "%s", out);
     }
   }
+}
+
+any Native_IsVip(Handle plugin, int numParams)
+{
+  int client = GetNativeCell(1);
+  if (!IsValidClient(client))
+  {
+    ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index %d", client);
+  }
+  return g_bIsVip[GetClientUserId(client)];
 }

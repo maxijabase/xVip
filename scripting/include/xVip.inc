@@ -128,18 +128,37 @@ stock bool IsValidClient(int client)
 
 stock int GetUserIDBySteamID(const char[] steamid)
 {
+  AuthIdType authType;
+  if (strlen(steamid) == 17)
+  {
+    authType = AuthId_SteamID64;
+  }
+  else if (StrContains(steamid, "STEAM_") == 0)
+  {
+    authType = AuthId_Steam2;
+  }
+  else if (StrContains(steamid, "[U:") == 0)
+  {
+    authType = AuthId_Steam3;
+  }
+  else
+  {
+    return -1;
+  }
+  
+  char clientSteamID[32];
   for (int i = 1; i <= MaxClients; i++)
   {
-    if (IsValidClient(i))
-    {
-      char steamid2[32];
-      GetClientAuthId(i, AuthId_SteamID64, steamid2, sizeof(steamid2));
-      if (StrEqual(steamid, steamid2))
-      {
-        return GetClientUserId(i);
-      }
-    }
+    if (!IsValidClient(i))
+      continue;
+      
+    if (!GetClientAuthId(i, authType, clientSteamID, sizeof(clientSteamID)))
+      continue;
+      
+    if (StrEqual(steamid, clientSteamID))
+      return GetClientUserId(i);
   }
+  
   return -1;
 }
 

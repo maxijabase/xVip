@@ -1,3 +1,21 @@
+#include <multicolors>
+
+/**
+ * Checks if a client has VIP status.
+ *
+ * @param client    Client index to check.
+ * @return          True if client is VIP, false otherwise.
+ */
+native bool xVip_IsVip(int client);
+
+/**
+ * Gets the xVip plugin prefix.
+ *
+ * @param prefix    Buffer to store the prefix.
+ * @param maxlen    Maximum length of the buffer.
+ */
+native void xVip_GetPrefix(char[] prefix, int maxlen);
+
 /**
  * Formats a duration in seconds to a human readable string.
  * 
@@ -107,22 +125,15 @@ stock void FormatTimeDiff(int start_time, int end_time, char[] buffer, int maxle
 
 stock bool IsValidClient(int client)
 {
-  if 
-    (
-    // "client" is 0 (console) or lower - nope!
-    0 >= client
-    // "client" is higher than MaxClients - nope!
-     || MaxClients < client
-    // "client" isnt in game aka their entity hasn't been created - nope!
-     || !IsClientInGame(client)
-    // "client" is sourcetv - nope!
-     || IsClientSourceTV(client)
-    // "client" is the replay bot - nope!
-     || IsClientReplay(client)
-    )
+  if (client <= 0 || 
+    client > MaxClients || 
+    !IsClientInGame(client) || 
+    IsClientSourceTV(client) || 
+    IsClientReplay(client))
   {
     return false;
   }
+  
   return true;
 }
 
@@ -162,10 +173,17 @@ stock int GetUserIDBySteamID(const char[] steamid)
   return -1;
 }
 
-/**
- * Checks if a client has VIP status.
- *
- * @param client    Client index to check.
- * @return          True if client is VIP, false otherwise.
- */
-native bool xVip_IsVip(int client);
+stock void xVip_Reply(int client, const char[] message, any ...) {
+  char msg[1024];
+  VFormat(msg, sizeof(msg), message, 3);
+  char prefix[64];
+  xVip_GetPrefix(prefix, sizeof(prefix));
+  char out[1024];
+  Format(out, sizeof(out), "%s %s", prefix, msg);
+  TrimString(out);
+  if (client == 0) {
+    CPrintToServer(out);
+  } else {
+    CPrintToChat(client, out);
+  }
+}

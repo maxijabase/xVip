@@ -23,6 +23,9 @@ Database g_DB;
 ConVar g_cvFlags;
 char g_cFlags[20];
 
+ConVar g_cvPrefix;
+char g_cPrefix[64];
+
 bool g_bIsVip[1024] = { false, ... };
 bool g_Late;
 
@@ -39,6 +42,7 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 {
   RegPluginLibrary("xVip");
   CreateNative("xVip_IsVip", Native_IsVip);
+  CreateNative("xVip_GetPrefix", Native_GetPrefix);
 
   g_Late = late;
   return APLRes_Success;
@@ -52,7 +56,9 @@ public void OnPluginStart()
   AutoExecConfig_SetCreateFile(true);
   
   g_cvFlags = AutoExecConfig_CreateConVar("xVip_flags", "p", "Flags to assign to VIPs. I recommend using custom flags. Check https://wiki.alliedmods.net/Adding_Admins_(SourceMod)#Levels for more info.");
-  g_cvFlags.AddChangeHook(OnFlagsChanged);
+  g_cvPrefix = AutoExecConfig_CreateConVar("xVip_prefix", "{orange}[xVip]{default}", "Prefix for xVip messages.");
+  g_cvFlags.AddChangeHook(OnCvarChanged);
+  g_cvPrefix.AddChangeHook(OnCvarChanged);
 
   AutoExecConfig_CleanFile();
   AutoExecConfig_ExecuteFile();
@@ -65,8 +71,9 @@ public void OnPluginStart()
   LoadTranslations("common.phrases");
 }
 
-public void OnFlagsChanged(ConVar convar, const char[] oldValue, const char[] newValue) {
+public void OnCvarChanged(ConVar convar, const char[] oldValue, const char[] newValue) {
   g_cvFlags.GetString(g_cFlags, sizeof(g_cFlags));
+  g_cvPrefix.GetString(g_cPrefix, sizeof(g_cPrefix));
 }
 
 public void SQL_OnConnection(Database db, const char[] error, any data)
@@ -105,7 +112,7 @@ void CreateTables()
  		 PRIMARY KEY (`id`), \
   		 UNIQUE KEY `steamid` (`steamid`)  \
   		 ) ENGINE = InnoDB AUTO_INCREMENT=0 DEFAULT CHARSET=utf8 COLLATE=utf8_bin;";
-  pack.WriteString("[xVip] Created table 'xVip_vips'");
+  pack.WriteString("Created table 'xVip_vips'");
   g_DB.Query(SQL_OnTableCreated, createTableQuery, pack);
   
   char createVipLogsTableQuery[] = 
@@ -126,7 +133,7 @@ void CreateTables()
     PRIMARY KEY (id)) \
     ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;";
   pack = new DataPack();
-  pack.WriteString("[xVip] Created table 'xVip_logs'");
+  pack.WriteString("Created table 'xVip_logs'");
   g_DB.Query(SQL_OnTableCreated, createVipLogsTableQuery, pack);
 
   char createRolesTableQuery[] = 
@@ -138,7 +145,7 @@ void CreateTables()
     UNIQUE KEY `role_name` (`role_name`) \
     ) ENGINE=InnoDB AUTO_INCREMENT=0 DEFAULT CHARSET=utf8 COLLATE=utf8_bin;";
   pack = new DataPack();
-  pack.WriteString("[xVip] Created table 'xVip_web_roles'");
+  pack.WriteString("Created table 'xVip_web_roles'");
   g_DB.Query(SQL_OnTableCreated, createRolesTableQuery, pack);
 
   char insertDefaultRolesQuery[] = 
@@ -146,7 +153,7 @@ void CreateTables()
     ('admin'), \
     ('owner');";
   pack = new DataPack();
-  pack.WriteString("[xVip] Inserted default web roles.");
+  pack.WriteString("Inserted default web roles.");
   g_DB.Query(SQL_OnTableCreated, insertDefaultRolesQuery, pack);
   
   char createAdminsTableQuery[] = 
@@ -161,12 +168,13 @@ void CreateTables()
     FOREIGN KEY (`roleid`) REFERENCES `xVip_web_roles`(`id`) ON DELETE RESTRICT \
     ) ENGINE=InnoDB AUTO_INCREMENT=0 DEFAULT CHARSET=utf8 COLLATE=utf8_bin;";
   pack = new DataPack();
-  pack.WriteString("[xVip] Created table 'xVip_web_admins'");
+  pack.WriteString("Created table 'xVip_web_admins'");
   g_DB.Query(SQL_OnTableCreated, createAdminsTableQuery, pack);
 }
 
 public void OnConfigsExecuted() {
   g_cvFlags.GetString(g_cFlags, sizeof(g_cFlags));
+  g_cvPrefix.GetString(g_cPrefix, sizeof(g_cPrefix));
 }
 
 /* CHECK VIP */
@@ -174,7 +182,7 @@ public void OnConfigsExecuted() {
 public Action CMD_Vip(int client, int args) {
   if (g_DB == null)
   {
-    CPrintToChat(client, "[xVip] Database not connected. Try again later.");
+    xVip_Reply(client, "Database not connected. Try again later.");
     return Plugin_Handled;
   }
 
@@ -188,18 +196,18 @@ public Action CMD_Vip(int client, int args) {
         char steamid[20];
         if (!GetClientAuthId(i, AuthId_SteamID64, steamid, sizeof(steamid)))
         {
-          PrintToServer("[xVip] Error retrieving SteamID for %N.", i);
+          xVip_Reply(0, "Error retrieving SteamID for %N.", i);
           continue;
         }
         count++;
         char name[MAX_NAME_LENGTH];
         GetClientName(i, name, sizeof(name));
-        PrintToServer("[xVip] %N (%s) is a VIP.", name, steamid);
+        xVip_Reply(0, "%N (%s) is a VIP.", name, steamid);
       }
     }
     if (count == 0)
     {
-      PrintToServer("[xVip] No VIPs currently connected.");
+      xVip_Reply(0, "No VIPs currently connected.");
     }
     return Plugin_Handled;
   }
@@ -211,7 +219,7 @@ public Action CMD_Vip(int client, int args) {
     char steamid[20];
     if (!GetClientAuthId(client, AuthId_SteamID64, steamid, sizeof(steamid)))
     {
-      CPrintToChat(client, "[xVip] Error retrieving your SteamID. Try again later.");
+      xVip_Reply(client, "Error retrieving your SteamID. Try again later.");
       return Plugin_Handled;
     }
     
@@ -222,7 +230,7 @@ public Action CMD_Vip(int client, int args) {
   }
   else
   {
-    CPrintToChat(client, "[xVip] You are not a VIP.");
+    xVip_Reply(client, "You are not a VIP.");
   }
 
   return Plugin_Handled;
@@ -279,8 +287,8 @@ public int VipPanelMenuHandler(Handle menu, MenuAction action, int client, int i
 public Action CMD_AddVip(int client, int args) {
   // Check arguments
   if (args < 1) {
-    ReplyToCommand(client, "[xVip] Usage: sm_addvip <steamid|target> [duration] [name].");
-    ReplyToCommand(client, "[xVip] Example: sm_addvip 76561198179807307 30d.");
+    xVip_Reply(client, "Usage: sm_addvip <steamid|target> [duration] [name].");
+    xVip_Reply(client, "Example: sm_addvip 76561198179807307 30d.");
     return Plugin_Handled;
   }
   
@@ -293,12 +301,12 @@ public Action CMD_AddVip(int client, int args) {
       return Plugin_Handled;
     }
     if (g_bIsVip[GetClientUserId(target)]) {
-      ReplyToCommand(client, "[xVip] %N is already a VIP.", target);
+      xVip_Reply(client, "%N is already a VIP.", target);
       return Plugin_Handled;
     }
     if (!GetClientAuthId(target, AuthId_SteamID64, arg_steamid, sizeof(arg_steamid)))
     {
-      ReplyToCommand(client, "[xVip] Error retrieving target's SteamID.");
+      xVip_Reply(client, "Error retrieving target's SteamID.");
       return Plugin_Handled;
     }
   }
@@ -317,7 +325,7 @@ public Action CMD_AddVip(int client, int args) {
     enddate = ParseTime(arg_duration);
     if (enddate <= 0)
     {
-      ReplyToCommand(client, "[xVip] Invalid duration. Usage: [number][d|m|y] (30d, 60m, 1y).");
+      xVip_Reply(client, "Invalid duration. Usage: [number][d|m|y] (30d, 60m, 1y).");
       return Plugin_Handled;
     }
   }
@@ -333,7 +341,7 @@ public Action CMD_AddVip(int client, int args) {
     }
     else
     {
-      ReplyToCommand(client, "[xVip] If you manually inserted a Steam ID, you must provide a name.");
+      xVip_Reply(client, "If you manually inserted a Steam ID, you must provide a name.");
       return Plugin_Handled;
     }
   }
@@ -352,7 +360,7 @@ public Action CMD_AddVip(int client, int args) {
   {
     if (!GetClientAuthId(client, AuthId_SteamID64, admin_steamid, sizeof(admin_steamid)))
     {
-      ReplyToCommand(client, "[xVip] Error retrieving your SteamID. Admin will only be saved with name.");
+      xVip_Reply(client, "Error retrieving your SteamID. Admin will only be saved with name.");
     }
     GetClientName(client, admin_name, sizeof(admin_name));
     admin_userid = GetClientUserId(client);
@@ -404,7 +412,8 @@ public void SQL_OnVipAdded(Database db, DBResultSet results, const char[] error,
   char endDate[64];
   FormatTime(endDate, sizeof(endDate), "%b %d, %Y - %R", enddate);
   
-  Reply(admin_userid, "[xVip] Added %s (%s) as VIP. Duration: %s", user_name, user_steamid, durationStr);
+  int admin_client = GetClientOfUserId(admin_userid);
+  xVip_Reply(admin_client, "Added %s (%s) as VIP. Duration: %s", user_name, user_steamid, durationStr);
 
   LogVipAction("add", user_name, user_steamid, admin_name, admin_steamid, duration);
 
@@ -416,7 +425,7 @@ public void SQL_OnVipAdded(Database db, DBResultSet results, const char[] error,
 
 public Action CMD_RemoveVip(int client, int args) {
   if (args != 1) {
-    ReplyToCommand(client, "[xVip] Usage: sm_removevip <steamid|target>.");
+    xVip_Reply(client, "Usage: sm_removevip <steamid|target>.");
     return Plugin_Handled;
   }
   
@@ -429,7 +438,7 @@ public Action CMD_RemoveVip(int client, int args) {
     }
     if (!GetClientAuthId(target, AuthId_SteamID64, steamIdInput, sizeof(steamIdInput)))
     {
-      CPrintToChat(client, "[xVip] Error retrieving target's SteamID.");
+      xVip_Reply(client, "Error retrieving target's SteamID.");
       return Plugin_Handled;
     }
   }
@@ -459,7 +468,8 @@ public void SQL_OnVipSelectedForRemoval(Database db, DBResultSet results, const 
   pack.ReadString(steamid, sizeof(steamid));
 
   if (results.RowCount == 0) {
-    Reply(userid, "[xVip] No VIP found with SteamID: %s", steamid);
+    int admin_client = GetClientOfUserId(userid);
+    xVip_Reply(admin_client, "No VIP found with SteamID: %s", steamid);
     return;
   }
   
@@ -490,15 +500,15 @@ public void SQL_OnVipDeleted(Database db, DBResultSet results, const char[] erro
   char admin_name[64];
   char admin_steamid[20];
 
-  Reply(admin_userid, "[xVip] Successfully removed %s's VIP (%s).", user_name, user_steamid);
+  int admin_client = GetClientOfUserId(admin_userid);
+  xVip_Reply(admin_client, "Successfully removed %s's VIP (%s).", user_name, user_steamid);
   if (admin_userid == 0) {
     admin_name = "CONSOLE";
     admin_steamid = "CONSOLE";
   } else {
-    int client = GetClientOfUserId(admin_userid);
-    if (client) {
-      GetClientName(client, admin_name, sizeof(admin_name));
-      GetClientAuthId(client, AuthId_SteamID64, admin_steamid, sizeof(admin_steamid));
+    if (admin_client) {
+      GetClientName(admin_client, admin_name, sizeof(admin_name));
+      GetClientAuthId(admin_client, AuthId_SteamID64, admin_steamid, sizeof(admin_steamid));
     }
   }
 
@@ -515,7 +525,7 @@ public void SQL_OnVipDeleted(Database db, DBResultSet results, const char[] erro
 
 public Action CMD_ExtendVip(int client, int args) {
   if (args < 1) {
-    ReplyToCommand(client, "[xVip] Usage: sm_extendvip <steamid|target> [duration]");
+    xVip_Reply(client, "Usage: sm_extendvip <steamid|target> [duration]");
     return Plugin_Handled;
   }
   
@@ -528,12 +538,12 @@ public Action CMD_ExtendVip(int client, int args) {
       return Plugin_Handled;
     }
     if (!g_bIsVip[GetClientUserId(target)]) {
-      CPrintToChat(client, "[xVip] Target is not a VIP.");
+      xVip_Reply(client, "Target is not a VIP.");
       return Plugin_Handled;
     }
     if (!GetClientAuthId(target, AuthId_SteamID64, steamIdInput, sizeof(steamIdInput)))
     {
-      CPrintToChat(client, "[xVip] Error retrieving target's SteamID.");
+      xVip_Reply(client, "Error retrieving target's SteamID.");
       return Plugin_Handled;
     }
   }
@@ -549,30 +559,41 @@ public Action CMD_ExtendVip(int client, int args) {
     int currentTime = GetTime();
     int futureTime = ParseTime(duration);
     if (futureTime < 0) {
-      CPrintToChat(client, "[xVip] Invalid duration. Usage: [number][d|m|y] (30d, 60m, 1y).");
+      xVip_Reply(client, "Invalid duration. Usage: [number][d|m|y] (30d, 60m, 1y).");
       return Plugin_Handled;
     }
     extension_seconds = futureTime - currentTime;
   }
 
-  char adminName[64];
-  GetClientName(client, adminName, sizeof(adminName));
-
-  char adminSteamId[20];
-  if (!GetClientAuthId(client, AuthId_SteamID64, adminSteamId, sizeof(adminSteamId))) {
-    CPrintToChat(client, "[xVip] Error retrieving your SteamID. Admin will only be saved with name.");
+  // Get admin info
+  char admin_name[64];
+  char admin_steamid[20];
+  int admin_userid;
+  if (client == 0)
+  {
+    admin_name = "CONSOLE";
+    admin_steamid = "CONSOLE";
+    admin_userid = 0;
+  }
+  else
+  {
+    if (!GetClientAuthId(client, AuthId_SteamID64, admin_steamid, sizeof(admin_steamid)))
+    {
+      xVip_Reply(client, "Error retrieving your SteamID. Admin will only be saved with name.");
+    }
+    GetClientName(client, admin_name, sizeof(admin_name));
+    admin_userid = GetClientUserId(client);
   }
 
-  ExtendVip(GetClientUserId(client), steamIdInput, extension_seconds, adminSteamId, adminName);
-
+  ExtendVip(admin_userid, steamIdInput, extension_seconds, admin_steamid, admin_name);
   return Plugin_Handled;
 }
 
-void ExtendVip(int userid, const char[] steamid, int extension_seconds, const char[] admin_steamid, const char[] admin_name) {
+void ExtendVip(int admin_userid, const char[] steamid, int extension_seconds, const char[] admin_steamid, const char[] admin_name) {
   char query[1024];
   Format(query, sizeof(query), "SELECT name, enddate FROM xVip_vips WHERE steamid = '%s';", steamid);
   DataPack pack = new DataPack();
-  pack.WriteCell(userid);
+  pack.WriteCell(admin_userid);
   pack.WriteString(steamid);
   pack.WriteCell(extension_seconds);
   pack.WriteString(admin_steamid);
@@ -582,7 +603,7 @@ void ExtendVip(int userid, const char[] steamid, int extension_seconds, const ch
 
 public void SQL_OnVipSelectedForExtension(Database db, DBResultSet results, const char[] error, DataPack pack) {
   pack.Reset();
-  int userid = pack.ReadCell();
+  int admin_userid = pack.ReadCell();
   char steamid[20];
   pack.ReadString(steamid, sizeof(steamid));
   int extension_seconds = pack.ReadCell();
@@ -593,7 +614,8 @@ public void SQL_OnVipSelectedForExtension(Database db, DBResultSet results, cons
   delete pack;
 
   if (results.RowCount == 0) {
-    Reply(userid, "[xVip] No VIP found with SteamID: %s", steamid);
+    int admin_client = GetClientOfUserId(admin_userid);
+    xVip_Reply(admin_client, "No VIP found with SteamID: %s", steamid);
     return;
   }
 
@@ -609,7 +631,7 @@ public void SQL_OnVipSelectedForExtension(Database db, DBResultSet results, cons
   Format(query, sizeof(query), "UPDATE xVip_vips SET enddate = %d WHERE steamid = '%s';", new_enddate, steamid);
   
   DataPack extendPack = new DataPack();
-  extendPack.WriteCell(userid);
+  extendPack.WriteCell(admin_userid);
   extendPack.WriteString(name);
   extendPack.WriteString(steamid);
   extendPack.WriteCell(new_enddate);
@@ -621,7 +643,7 @@ public void SQL_OnVipSelectedForExtension(Database db, DBResultSet results, cons
 
 public void SQL_OnVipExtended(Database db, DBResultSet results, const char[] error, DataPack pack) {
   pack.Reset();
-  int userid = pack.ReadCell();
+  int admin_userid = pack.ReadCell();
   char name[MAX_NAME_LENGTH];
   pack.ReadString(name, sizeof(name));
   char steamid[20];
@@ -645,7 +667,8 @@ public void SQL_OnVipExtended(Database db, DBResultSet results, const char[] err
   char endDate[64];
   FormatTime(endDate, sizeof(endDate), "%b %d, %Y - %R", new_enddate);
 
-  Reply(userid, "[xVip] Successfully extended %s's VIP (%s) to %s. Duration: %s", name, steamid, endDate, durationStr);
+  int admin_client = GetClientOfUserId(admin_userid);
+  xVip_Reply(admin_client, "Successfully extended %s's VIP (%s) to %s. Duration: %s", name, steamid, endDate, durationStr);
 
   LogVipAction("extend", name, steamid, admin_name, admin_steamid, duration);
 }
@@ -726,7 +749,7 @@ public void SQL_OnTableCreated(Handle owner, Handle hndl, const char[] error, Da
   pack.Reset();
   char message[64];
   pack.ReadString(message, sizeof(message));
-  PrintToServer("%s", message);
+  xVip_Reply(0, "%s", message);
   delete pack;
 }
 
@@ -749,20 +772,7 @@ public void SQL_ErrorCheck(Database db, DBResultSet results, const char[] error,
   }
 }
 
-stock void Reply(int userid, const char[] message, any ...) {
-  char out[1024];
-  VFormat(out, sizeof(out), message, 3);
-  if (userid == 0) {
-    PrintToServer("%s", out);
-  } else {
-    int client = GetClientOfUserId(userid);
-    if (client) {
-      CPrintToChat(client, "%s", out);
-    }
-  }
-}
-
-any Native_IsVip(Handle plugin, int numParams)
+public any Native_IsVip(Handle plugin, int numParams)
 {
   int client = GetNativeCell(1);
   if (!IsValidClient(client))
@@ -770,4 +780,9 @@ any Native_IsVip(Handle plugin, int numParams)
     ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index %d", client);
   }
   return g_bIsVip[GetClientUserId(client)];
+}
+
+public int Native_GetPrefix(Handle plugin, int numParams)
+{ 
+  return SetNativeString(1, g_cPrefix, sizeof(g_cPrefix));
 }

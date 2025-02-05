@@ -102,7 +102,7 @@ void CreateTables()
   DataPack pack = new DataPack();
   char createTableQuery[4096] = 
   "CREATE TABLE IF NOT EXISTS `xVip_vips` ( \
- 		`id` bigint(20) NOT NULL AUTO_INCREMENT, \
+ 		`id` int NOT NULL AUTO_INCREMENT, \
   		`name` varchar(36) COLLATE utf8_bin NOT NULL, \
   		`steamid` varchar(20) COLLATE utf8_bin NOT NULL, \
   		`startdate` int NOT NULL DEFAULT CURRENT_TIMESTAMP, \
@@ -117,7 +117,7 @@ void CreateTables()
   
   char createVipLogsTableQuery[] = 
   "CREATE TABLE IF NOT EXISTS xVip_logs ( \
-    id BIGINT(20) NOT NULL AUTO_INCREMENT, \
+    id int NOT NULL AUTO_INCREMENT, \
     action_type ENUM('add', 'remove', 'extend', 'expire', 'payment_mp', 'payment_items') NOT NULL, \
     timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, \
     target_name VARCHAR(36) COLLATE utf8_bin NOT NULL, \
@@ -138,7 +138,7 @@ void CreateTables()
 
   char createRolesTableQuery[] = 
   "CREATE TABLE IF NOT EXISTS `xVip_web_roles` ( \
-    `id` bigint(20) NOT NULL AUTO_INCREMENT, \
+    `id` int NOT NULL AUTO_INCREMENT, \
     `role_name` varchar(32) COLLATE utf8_bin NOT NULL, \
     `timestamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, \
     PRIMARY KEY (`id`), \
@@ -158,10 +158,10 @@ void CreateTables()
   
   char createAdminsTableQuery[] = 
   "CREATE TABLE IF NOT EXISTS `xVip_web_admins` ( \
-    `id` bigint(20) NOT NULL AUTO_INCREMENT, \
+    `id` int NOT NULL AUTO_INCREMENT, \
     `steamid` varchar(17) COLLATE utf8_bin NOT NULL, \
     `name` varchar(36) COLLATE utf8_bin NOT NULL, \
-    `roleid` bigint(20) NOT NULL, \
+    `roleid` int NOT NULL, \
     `timestamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, \
     PRIMARY KEY (`id`), \
     UNIQUE KEY `steamid` (`steamid`), \

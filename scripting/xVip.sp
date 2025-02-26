@@ -43,6 +43,7 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
   RegPluginLibrary("xVip");
   CreateNative("xVip_IsVip", Native_IsVip);
   CreateNative("xVip_GetPrefix", Native_GetPrefix);
+  CreateNative("xVip_Reply", Native_Reply);
 
   g_Late = late;
   return APLRes_Success;
@@ -135,41 +136,6 @@ void CreateTables()
   pack = new DataPack();
   pack.WriteString("Created table 'xVip_logs'");
   g_DB.Query(SQL_OnTableCreated, createVipLogsTableQuery, pack);
-
-  char createRolesTableQuery[] = 
-  "CREATE TABLE IF NOT EXISTS `xVip_web_roles` ( \
-    `id` int NOT NULL AUTO_INCREMENT, \
-    `role_name` varchar(32) COLLATE utf8_bin NOT NULL, \
-    `timestamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, \
-    PRIMARY KEY (`id`), \
-    UNIQUE KEY `role_name` (`role_name`) \
-    ) ENGINE=InnoDB AUTO_INCREMENT=0 DEFAULT CHARSET=utf8 COLLATE=utf8_bin;";
-  pack = new DataPack();
-  pack.WriteString("Created table 'xVip_web_roles'");
-  g_DB.Query(SQL_OnTableCreated, createRolesTableQuery, pack);
-
-  char insertDefaultRolesQuery[] = 
-  "INSERT IGNORE INTO `xVip_web_roles` (`role_name`) VALUES \
-    ('admin'), \
-    ('owner');";
-  pack = new DataPack();
-  pack.WriteString("Inserted default web roles.");
-  g_DB.Query(SQL_OnTableCreated, insertDefaultRolesQuery, pack);
-  
-  char createAdminsTableQuery[] = 
-  "CREATE TABLE IF NOT EXISTS `xVip_web_admins` ( \
-    `id` int NOT NULL AUTO_INCREMENT, \
-    `steamid` varchar(17) COLLATE utf8_bin NOT NULL, \
-    `name` varchar(36) COLLATE utf8_bin NOT NULL, \
-    `roleid` int NOT NULL, \
-    `timestamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, \
-    PRIMARY KEY (`id`), \
-    UNIQUE KEY `steamid` (`steamid`), \
-    FOREIGN KEY (`roleid`) REFERENCES `xVip_web_roles`(`id`) ON DELETE RESTRICT \
-    ) ENGINE=InnoDB AUTO_INCREMENT=0 DEFAULT CHARSET=utf8 COLLATE=utf8_bin;";
-  pack = new DataPack();
-  pack.WriteString("Created table 'xVip_web_admins'");
-  g_DB.Query(SQL_OnTableCreated, createAdminsTableQuery, pack);
 }
 
 public void OnConfigsExecuted() {
@@ -785,4 +751,35 @@ public any Native_IsVip(Handle plugin, int numParams)
 public int Native_GetPrefix(Handle plugin, int numParams)
 { 
   return SetNativeString(1, g_cPrefix, sizeof(g_cPrefix));
+}
+
+public any Native_Reply(Handle plugin, int numParams)
+{
+  int client = GetNativeCell(1);
+  if (client != 0 && !IsValidClient(client))
+  {
+    ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index %d", client);
+    return 0;
+  }
+  
+  char formatted_message[1024];
+  
+  int error = FormatNativeString(0, 2, 3, sizeof(formatted_message), _, formatted_message);
+  
+  if (error != SP_ERROR_NONE)
+  {
+    ThrowNativeError(error, "Error formatting message");
+    return 0;
+  }
+  
+  char out[1024];
+  Format(out, sizeof(out), "%s %s", g_cPrefix, formatted_message);
+  TrimString(out);
+  
+  if (client == 0) {
+    CPrintToServer(out);
+  } else {
+    CPrintToChat(client, out);
+  }
+  return 0;
 }

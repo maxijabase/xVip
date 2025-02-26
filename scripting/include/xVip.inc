@@ -1,5 +1,3 @@
-#include <multicolors>
-
 /**
  * Checks if a client has VIP status.
  *
@@ -15,6 +13,16 @@ native bool xVip_IsVip(int client);
  * @param maxlen    Maximum length of the buffer.
  */
 native void xVip_GetPrefix(char[] prefix, int maxlen);
+
+/**
+ * Sends a formatted message to a client with the plugin's prefix.
+ * 
+ * @param client    Client index.
+ * @param message   Message format string.
+ * 
+ * @note This is a helper function to send messages to clients with proper formatting.
+ */
+native void xVip_Reply(int client, const char[] message, any ...);
 
 /**
  * Formats a duration in seconds to a human readable string.
@@ -171,19 +179,4 @@ stock int GetUserIDBySteamID(const char[] steamid)
   }
   
   return -1;
-}
-
-stock void xVip_Reply(int client, const char[] message, any ...) {
-  char msg[1024];
-  VFormat(msg, sizeof(msg), message, 3);
-  char prefix[64];
-  xVip_GetPrefix(prefix, sizeof(prefix));
-  char out[1024];
-  Format(out, sizeof(out), "%s %s", prefix, msg);
-  TrimString(out);
-  if (client == 0) {
-    CPrintToServer(out);
-  } else {
-    CPrintToChat(client, out);
-  }
 }
